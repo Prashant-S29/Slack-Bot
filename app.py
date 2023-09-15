@@ -1,15 +1,15 @@
 import os
 from dotenv import load_dotenv
 import mysql.connector
-from datetime import datetime, date
+import datetime
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+import logging
 
 import database.database as dynamodb
-
 
 load_dotenv()
 SLACK_BOT_TOKEN = os.environ['SLACK_BOT_TOKEN']
@@ -41,18 +41,41 @@ cursor.execute(
 
 app = App(token=SLACK_BOT_TOKEN)
 
+
+logger = logging.getLogger(__name__)
+
+
 def log_request(logger, body, next):
     logger.debug(body)
     next()
 
+# Reminder Message
+def sendmessage():
+    tomorrow = datetime.date.today()
+    scheduled_time = datetime.time(hour=17, minute=29)
+    schedule_timestamp = datetime.datetime.combine(
+        tomorrow, scheduled_time).timestamp()
+    try:
+        app.client.chat_scheduleMessage(
+            channel="C05RPRZD80K",
+            post_at=schedule_timestamp,
+            text="Kindly submit your standups"
+        )
+        print("schedule for today")
+    except:
+        print("schedule for tomorrow")
+        tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+sendmessage()
+
+
 def store_standup_data(standup_data):
-    DATE=standup_data[0]
-    TIME=standup_data[1]
-    USERID=standup_data[2]
-    USERNAME=standup_data[3]
-    Y_UPDATE=standup_data[4]
-    T_UPDATE=standup_data[5]
-    BLOCKER=standup_data[6]
+    DATE = standup_data[0]
+    TIME = standup_data[1]
+    USERID = standup_data[2]
+    USERNAME = standup_data[3]
+    Y_UPDATE = standup_data[4]
+    T_UPDATE = standup_data[5]
+    BLOCKER = standup_data[6]
 
     sql = "INSERT INTO standup_data (DATE, TIME, USERID, USERNAME, Y_UPDATE, T_UPDATE, BLOCKER) VALUES (%s, %s, %s, %s, %s, %s, %s)"
     val = (DATE, TIME, USERID, USERNAME, Y_UPDATE, T_UPDATE, BLOCKER)
@@ -60,90 +83,129 @@ def store_standup_data(standup_data):
     mydb.commit()
 
 
+# Check for the Late Standup calls
+def check_for_time(time):
+    print(time)
+    start_time = time.replace(hour=18, minute=30, second=0, microsecond=0)
+    end_time = time.replace(hour=18, minute=45, second=0, microsecond=0)
+
+    if time < start_time:
+        return "0"
+    elif time < end_time:
+        return True
+    else:
+        return "1"
+
 
 @app.command("/standup")
 def create_standup(ack, body, logger, client):
-    ack()
-    try:
-        response = client.views_open(
-            trigger_id=body["trigger_id"],
-            view={
 
-                "type": "modal",
-                "title": {
+    time = datetime.datetime.now()
+    permit = check_for_time(time)
+
+    if permit == True:
+        ack()
+        try:
+            response = client.views_open(
+                trigger_id=body["trigger_id"],
+                view={
+
+                    "type": "modal",
+                    "title": {
+                            "type": "plain_text",
+                            "text": "Standup Bot"
+                    },
+                    "submit": {
                         "type": "plain_text",
-                        "text": "Standup Bot"
-                },
-                "submit": {
-                    "type": "plain_text",
-                    "text": "Submit Standup",
-                    "emoji": True
-                },
-                "close": {
-                    "type": "plain_text",
-                    "text": "Cancel",
-                    "emoji": True
-                },
-                "callback_id": "submit_your_standup",
-                "clear_on_close": True,
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
+                        "text": "Submit Standup",
+                        "emoji": True
+                    },
+                    "close": {
+                        "type": "plain_text",
+                        "text": "Cancel",
+                        "emoji": True
+                    },
+                    "callback_id": "submit_your_standup",
+                    "clear_on_close": True,
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                    "type": "plain_text",
+                                    "text": "Kindly update your standup.",
+                                    "emoji": True
+                            }
+                        },
+                        {
+                            "type": "divider"
+                        },
+                        {
+                            "type": "input",
+                            "element": {
+                                    "type": "plain_text_input",
+                                    "multiline": True,
+                                    "action_id": "plain_text_input-action-y"
+                            },
+                            "label": {
                                 "type": "plain_text",
-                                "text": "Kindly update your standup.",
+                                "text": "What you did yesterday?",
                                 "emoji": True
-                        }
-                    },
-                    {
-                        "type": "divider"
-                    },
-                    {
-                        "type": "input",
-                        "element": {
-                                "type": "plain_text_input",
-                                "multiline": True,
-                                "action_id": "plain_text_input-action-y"
+                            }
                         },
-                        "label": {
-                            "type": "plain_text",
-                            "text": "What you did yesterday?",
-                            "emoji": True
-                        }
-                    },
-                    {
-                        "type": "input",
-                        "element": {
-                                "type": "plain_text_input",
-                                "multiline": True,
-                                "action_id": "plain_text_input-action-t"
+                        {
+                            "type": "input",
+                            "element": {
+                                    "type": "plain_text_input",
+                                    "multiline": True,
+                                    "action_id": "plain_text_input-action-t"
+                            },
+                            "label": {
+                                "type": "plain_text",
+                                "text": "What will you do today?",
+                                "emoji": True
+                            }
                         },
-                        "label": {
-                            "type": "plain_text",
-                            "text": "What will you do today?",
-                            "emoji": True
+                        {
+                            "type": "input",
+                            "element": {
+                                    "type": "plain_text_input",
+                                    "action_id": "plain_text_input-action-b"
+                            },
+                            "label": {
+                                "type": "plain_text",
+                                "text": "What are the Blockers",
+                                "emoji": True
+                            }
                         }
-                    },
-                    {
-                        "type": "input",
-                        "element": {
-                                "type": "plain_text_input",
-                                "action_id": "plain_text_input-action-b"
-                        },
-                        "label": {
-                            "type": "plain_text",
-                            "text": "What are the Blockers",
-                            "emoji": True
-                        }
-                    }
-                ]
+                    ]
 
-            }
+                }
+            )
+            logger.info(response)
+            app.client.chat_postMessage(
+                channel="C05RPRZD80K",
+                text="Standup added successfully"
+            )
+
+        except SlackApiError as e:
+            logger.error("Error creating conversation: {}".format(e))
+
+    elif permit == "0":
+        app.client.chat_postMessage(
+            channel="C05RPRZD80K",
+            text="standup is not opened yet!"
         )
-        logger.info(response)
 
-    except SlackApiError as e:
-        logger.error("Error creating conversation: {}".format(e))
+    elif permit == "1":
+        app.client.chat_postMessage(
+            channel="C05RPRZD80K",
+            text="You are late. Standup Timed out"
+        )
+    else:
+        app.client.chat_postMessage(
+            channel="C05RPRZD80K",
+            text="There is some error in updating your standup. pls contact your team lead"
+        )
 
 
 @app.view('submit_your_standup')
@@ -157,11 +219,10 @@ def submit_standup(body, ack):
     # Stanup Data
     standup_dataset = body['view']['state']['values']
     # Standup Date
-    standup_date = str(date.today())
+    standup_date = str(datetime.date.today())
     # Standup Time
-    now = datetime.now()
+    now = datetime.datetime.now()
     standup_time = now.strftime("%H:%M:%S")
-
 
     standup_data.append(standup_date)
     standup_data.append(standup_time)
@@ -173,22 +234,21 @@ def submit_standup(body, ack):
             standup_data.append(standup_dataset[data][data_id]['value'])
 
     print(standup_data)
-    store_standup_data(standup_data)
 
+    store_standup_data(standup_data)
     data = {
-        "user_id":user_id,
-        "standup_data":{
-            "date":standup_date,
-            "time":standup_time,
-            "user_name":user_name,
-            "y_update":standup_data[4],
-            "t_update":standup_data[5],
-            "blocker":standup_data[6]
+        "user_id": user_id,
+        "standup_data": {
+            "date": standup_date,
+            "time": standup_time,
+            "user_name": user_name,
+            "y_update": standup_data[4],
+            "t_update": standup_data[5],
+            "blocker": standup_data[6]
         }
     }
-
     dynamodb.store_data(data)
-    
+
 
 if __name__ == "__main__":
     SocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN")).start()
