@@ -65,8 +65,14 @@ def sendmessage():
     except:
         print("schedule for tomorrow")
         tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+
 sendmessage()
 
+
+@app.event("message")
+def handle_message_events(body, logger):
+    logger.info(body)
+    
 
 def store_standup_data(standup_data):
     DATE = standup_data[0]
@@ -86,8 +92,8 @@ def store_standup_data(standup_data):
 # Check for the Late Standup calls
 def check_for_time(time):
     print(time)
-    start_time = time.replace(hour=18, minute=30, second=0, microsecond=0)
-    end_time = time.replace(hour=18, minute=45, second=0, microsecond=0)
+    start_time = time.replace(hour=15, minute=30, second=0, microsecond=0)
+    end_time = time.replace(hour=17, minute=45, second=0, microsecond=0)
 
     if time < start_time:
         return "0"
@@ -181,31 +187,107 @@ def create_standup(ack, body, logger, client):
 
                 }
             )
+
             logger.info(response)
-            app.client.chat_postMessage(
-                channel="C05RPRZD80K",
-                text="Standup added successfully"
-            )
 
         except SlackApiError as e:
             logger.error("Error creating conversation: {}".format(e))
 
     elif permit == "0":
-        app.client.chat_postMessage(
-            channel="C05RPRZD80K",
-            text="standup is not opened yet!"
+        ack()
+        response = client.views_open(
+            trigger_id=body["trigger_id"],
+            view={
+
+                "type": "modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": "Access Denied"
+                },
+                "close": {
+                    "type": "plain_text",
+                    "text": "Ok",
+                    "emoji": True
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                                "type": "plain_text",
+                                "text": "Standup is not opened yet.",
+                                "emoji": True
+                        }
+                    }
+                ]
+
+            }
         )
 
+        logger.info(response)
+
     elif permit == "1":
-        app.client.chat_postMessage(
-            channel="C05RPRZD80K",
-            text="You are late. Standup Timed out"
+        ack()
+        response = client.views_open(
+            trigger_id=body["trigger_id"],
+            view={
+
+                "type": "modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": "Access Denied"
+                },
+                "close": {
+                    "type": "plain_text",
+                    "text": "Ok",
+                    "emoji": True
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                                "type": "plain_text",
+                                "text": "Standup timed out.",
+                                "emoji": True
+                        }
+                    }
+                ]
+
+            }
         )
+
+        logger.info(response)
+
     else:
-        app.client.chat_postMessage(
-            channel="C05RPRZD80K",
-            text="There is some error in updating your standup. pls contact your team lead"
+        ack()
+        response = client.views_open(
+            trigger_id=body["trigger_id"],
+            view={
+
+                "type": "modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": "Error"
+                },
+                "close": {
+                    "type": "plain_text",
+                    "text": "Ok",
+                    "emoji": True
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                                "type": "plain_text",
+                                "text": "There is some error in updating your standup. Pls contact your admin.",
+                                "emoji": True
+                        }
+                    }
+                ]
+
+            }
         )
+
+        logger.info(response)
 
 
 @app.view('submit_your_standup')
@@ -248,6 +330,133 @@ def submit_standup(body, ack):
         }
     }
     dynamodb.store_data(data)
+    app.client.chat_postMessage(
+        channel="C05RPRZD80K",
+        text="Standup added successfully"
+    )
+
+
+admins = ['U05NE6QN32A']
+
+
+@app.command("/getfile")
+def generate_file(ack, body, logger, client):
+    todays_date = datetime.date.today()
+    ack()
+    response = client.views_open(
+        trigger_id=body["trigger_id"],
+        view={
+
+            "type": "modal",
+            "title": {
+                    "type": "plain_text",
+                    "text": "Generate Standup File"
+            },
+            "submit": {
+                "type": "plain_text",
+                "text": "Generate File",
+                "emoji": True
+            },
+            "close": {
+                "type": "plain_text",
+                "text": "Cancel",
+                "emoji": True
+            },
+            "callback_id": "generate_file",
+            "clear_on_close": True,
+            "blocks": [
+                {
+                    "type": "input",
+                    "optional": True,
+                    "element": {
+                            "type": "multi_conversations_select",
+                        "placeholder": {
+                                    "type": "plain_text",
+                            "text": "Select users",
+                            "emoji": True
+                        },
+                        "filter": {
+                            "include": [
+                                "im"
+                            ],
+                            "exclude_bot_users": True
+                        },
+                        "action_id": "multi_users_select-action"
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "Input type Select users",
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "input",
+                    "optional": True,
+                    "element": {
+                            "type": "checkboxes",
+                        "options": [
+                                    {
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Select all Users",
+                                            "emoji": True
+                                        },
+                                        "value": "value-0"
+                                    }
+                        ],
+                        "action_id": "checkboxes-action"
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": " ",
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "input",
+                    "element": {
+                            "type": "datepicker",
+                        "initial_date": "2023-09-12",
+                        "placeholder": {
+                                    "type": "plain_text",
+                                        "text": "Select a date",
+                                        "emoji": True
+                        },
+                        "action_id": "datepicker-action"
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "From",
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "input",
+                    "element": {
+                            "type": "datepicker",
+                        "initial_date": f"{todays_date}",
+                        "placeholder": {
+                                    "type": "plain_text",
+                                        "text": "Select a date",
+                                        "emoji": True
+                        },
+                        "action_id": "datepicker-action"
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "To",
+                        "emoji": True
+                    }
+                }
+            ]
+
+        }
+    )
+
+    logger.info(response)
 
 
 if __name__ == "__main__":
